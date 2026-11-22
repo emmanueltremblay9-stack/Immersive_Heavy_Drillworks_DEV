@@ -66,5 +66,6 @@
   "screen.immersive_petro_machinery.placeholder.ie_survey": "IE Survey",
   "screen.immersive_petro_machinery.placeholder.ip_survey": "IP Survey",
   "screen.immersive_petro_machinery.placeholder.display_only": "placeholder",
-  "message.immersive_petro_machinery.recovery_protected": "This controller contains quarantined save data. Breaking is blocked to prevent loss. Keep a backup and resolve recovery before removal."
+  "message.immersive_petro_machinery.recovery_protected": "This controller contains quarantined save data. Breaking is blocked to prevent loss. Keep a backup and resolve recovery before removal.",
+  "message.immersive_petro_machinery.controller_protected": "This Docking Controller contains protected Garage state (%s). Breaking is blocked to prevent loss or duplication; keep it intact until its contents can be safely removed or transferred."
 }

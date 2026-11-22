@@ -872,6 +872,164 @@ public final class IPMGarageSafetyGameTests {
         helper.succeed();
     }
 
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void garage_upgrade_blocks_normal_break_without_drops(GameTestHelper helper) {
+        DockingControllerBlockEntity controller = placeController(helper);
+        controller.getGarageUpgradeInventory().setStackInSlot(
+                DockingControllerBlockEntity.BORE_HEAD_SLOT,
+                new ItemStack(IPMBlocks.BORE_HEAD_MK1.get()));
+
+        assertProtectedControllerBreakBlocked(helper, controller,
+                "a controller with a normal bore-head upgrade must refuse player breaking");
+        helper.assertTrue(
+                controller.getGarageUpgradeInventory().getStackInSlot(DockingControllerBlockEntity.BORE_HEAD_SLOT)
+                        .is(IPMBlocks.BORE_HEAD_MK1.get()),
+                "blocked breaking must retain the installed bore head");
+        helper.assertValueEqual(1,
+                controller.getGarageUpgradeInventory().getStackInSlot(DockingControllerBlockEntity.BORE_HEAD_SLOT)
+                        .getCount(),
+                "blocked breaking must not duplicate the installed bore head");
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void fuel_tank_blocks_normal_break_without_drops(GameTestHelper helper) {
+        DockingControllerBlockEntity controller = placeController(helper);
+        Fluid diesel = BuiltInRegistries.FLUID.get(DIESEL_ID);
+        helper.assertTrue(diesel != Fluids.EMPTY, "Immersive Petroleum diesel must be registered for this test");
+        helper.assertValueEqual(500,
+                controller.getFuelPortHandler().fill(new FluidStack(diesel, 500), IFluidHandler.FluidAction.EXECUTE),
+                "fuel fill should be accepted");
+
+        assertProtectedControllerBreakBlocked(helper, controller,
+                "a controller with stored fuel must refuse player breaking");
+        helper.assertValueEqual(500, controller.getFuelAmountForDiagnostics(),
+                "blocked breaking must retain the exact fuel amount");
+        helper.assertValueEqual("immersivepetroleum:diesel", controller.getFuelFluidId(),
+                "blocked breaking must retain the exact fuel identity");
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void lubricant_tank_blocks_normal_break_without_drops(GameTestHelper helper) {
+        DockingControllerBlockEntity controller = placeController(helper);
+        Fluid lubricant = BuiltInRegistries.FLUID.get(LUBRICANT_ID);
+        helper.assertTrue(lubricant != Fluids.EMPTY, "Immersive Petroleum lubricant must be registered for this test");
+        helper.assertValueEqual(250,
+                controller.getLubricantPortHandler().fill(
+                        new FluidStack(lubricant, 250), IFluidHandler.FluidAction.EXECUTE),
+                "lubricant fill should be accepted");
+
+        assertProtectedControllerBreakBlocked(helper, controller,
+                "a controller with stored lubricant must refuse player breaking");
+        helper.assertValueEqual(250, controller.getLubricantAmountForDiagnostics(),
+                "blocked breaking must retain the exact lubricant amount");
+        helper.assertValueEqual("immersivepetroleum:lubricant", controller.getLubricantFluidId(),
+                "blocked breaking must retain the exact lubricant identity");
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void soft_locked_controller_blocks_normal_break_without_drops(GameTestHelper helper) {
+        DockingControllerBlockEntity controller = placeController(helper);
+        controller.softLock(UUID.fromString("00000000-0000-0000-0000-000000000123"), "Test Digger");
+
+        assertProtectedControllerBreakBlocked(helper, controller,
+                "a controller soft-locked to a Digger must refuse player breaking");
+        helper.assertTrue(controller.isSoftLocked(), "blocked breaking must retain the Digger soft lock");
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void normal_controller_contents_survive_explosion_without_drops(GameTestHelper helper) {
+        DockingControllerBlockEntity controller = placeController(helper);
+        var level = helper.getLevel();
+        var pos = helper.absolutePos(CONTROLLER_POS);
+        var neighbor = pos.above();
+        level.setBlock(neighbor, Blocks.GLASS.defaultBlockState(), 3);
+        installNormalControllerContents(helper, controller);
+
+        var explosion = new net.minecraft.world.level.Explosion(level, null,
+                pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 1.0F, false,
+                net.minecraft.world.level.Explosion.BlockInteraction.DESTROY,
+                new java.util.ArrayList<>(java.util.List.of(pos, neighbor)));
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+                new net.neoforged.neoforge.event.level.ExplosionEvent.Detonate(level, explosion, new java.util.ArrayList<>()));
+
+        helper.assertFalse(explosion.getToBlow().contains(pos),
+                "a controller with normal Garage contents must be removed from the explosion destruction list");
+        helper.assertTrue(explosion.getToBlow().contains(neighbor),
+                "unrelated explosion targets must remain in the destruction list");
+        explosion.finalizeExplosion(false);
+
+        assertControllerUnreplaced(helper);
+        assertNormalControllerContents(helper, controller, "after explosion");
+        assertNoControllerDrops(helper);
+        helper.assertTrue(level.isEmptyBlock(neighbor), "unrelated glass must still be destroyed");
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void normal_controller_contents_survive_save_reload_without_duplication(GameTestHelper helper) {
+        DockingControllerBlockEntity controller = placeController(helper);
+        installNormalControllerContents(helper, controller);
+        HolderLookup.Provider registries = helper.getLevel().registryAccess();
+
+        CompoundTag saved = controller.saveWithFullMetadata(registries);
+        CompoundTag original = saved.copy();
+        DockingControllerBlockEntity loaded = loadControllerFromTag(helper, saved, registries);
+        helper.assertTrue(saved.equals(original), "loading must not mutate the source controller NBT");
+        assertNormalControllerContents(helper, loaded, "after first reload");
+
+        CompoundTag secondSave = loaded.saveWithFullMetadata(registries);
+        loaded.loadWithComponents(secondSave, registries);
+        assertNormalControllerContents(helper, loaded, "after repeated load on the same instance");
+
+        DockingControllerBlockEntity reloaded = loadControllerFromTag(
+                helper, loaded.saveWithFullMetadata(registries), registries);
+        assertNormalControllerContents(helper, reloaded, "after second fresh reload");
+        helper.succeed();
+    }
+
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void server_game_mode_destroy_block_refuses_loaded_controller_without_drops(GameTestHelper helper) {
+        DockingControllerBlockEntity controller = placeController(helper);
+        installNormalControllerContents(helper, controller);
+        var level = helper.getLevel();
+        var pos = helper.absolutePos(CONTROLLER_POS);
+        var player = createSurvivalFakePlayer(helper, pos);
+
+        boolean destroyed = player.gameMode.destroyBlock(pos);
+
+        helper.assertFalse(destroyed,
+                "ServerPlayerGameMode.destroyBlock must be refused for a controller with Garage contents");
+        assertControllerUnreplaced(helper);
+        assertNormalControllerContents(helper, controller, "after real server game-mode break attempt");
+        assertNoControllerDrops(helper);
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void server_game_mode_destroy_block_destroys_empty_controller_once(GameTestHelper helper) {
+        DockingControllerBlockEntity controller = placeController(helper);
+        var level = helper.getLevel();
+        var pos = helper.absolutePos(CONTROLLER_POS);
+        var player = createSurvivalFakePlayer(helper, pos);
+
+        helper.assertFalse(controller.hasProtectedStateForDestruction(),
+                "an empty, unlocked controller must not be protected");
+        boolean destroyed = player.gameMode.destroyBlock(pos);
+
+        helper.assertTrue(destroyed,
+                "ServerPlayerGameMode.destroyBlock must normally remove an empty controller");
+        helper.assertTrue(level.isEmptyBlock(pos), "empty controller block must be removed");
+        helper.assertTrue(level.getBlockEntity(pos) == null, "empty controller block entity must be removed");
+        assertSingleControllerDrop(helper);
+        helper.succeed();
+    }
+
     private static void assertQuarantinedRoundTrip(GameTestHelper helper, CompoundTag source, String key) {
         var registries = helper.getLevel().registryAccess();
         CompoundTag original = source.copy();
@@ -892,6 +1050,104 @@ public final class IPMGarageSafetyGameTests {
         loaded.loadWithComponents(firstSave, registries);
         CompoundTag secondSave = loaded.saveWithFullMetadata(registries);
         helper.assertTrue(archive.equals(secondSave.get("RecoveryQuarantine")), "repeated load/save must not replay or grow quarantine");
+    }
+
+
+
+    private static net.minecraft.server.level.ServerPlayer createSurvivalFakePlayer(
+            GameTestHelper helper,
+            BlockPos target
+    ) {
+        var player = net.neoforged.neoforge.common.util.FakePlayerFactory.getMinecraft(helper.getLevel());
+        player.setPos(target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5);
+        player.getInventory().clearContent();
+        player.setItemInHand(
+                net.minecraft.world.InteractionHand.MAIN_HAND,
+                new ItemStack(net.minecraft.world.item.Items.DIAMOND_PICKAXE));
+        helper.assertTrue(player.gameMode.isSurvival(), "FakePlayer must use survival game mode");
+        helper.assertTrue(player.getAbilities().mayBuild, "FakePlayer must be allowed to build and break blocks");
+        return player;
+    }
+
+    private static void assertSingleControllerDrop(GameTestHelper helper) {
+        var pos = helper.absolutePos(CONTROLLER_POS);
+        List<ItemEntity> drops = helper.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(pos).inflate(1.0));
+        helper.assertValueEqual(1, drops.size(), "normal empty-controller break must create exactly one item entity");
+        helper.assertTrue(
+                drops.get(0).getItem().is(IPMBlocks.DOCKING_CONTROLLER.get().asItem()),
+                "the single drop must be the Docking Controller item");
+        helper.assertValueEqual(1, drops.get(0).getItem().getCount(),
+                "the Docking Controller must drop exactly once");
+    }
+
+    private static void assertProtectedControllerBreakBlocked(
+            GameTestHelper helper,
+            DockingControllerBlockEntity controller,
+            String assertion
+    ) {
+        var level = helper.getLevel();
+        var pos = helper.absolutePos(CONTROLLER_POS);
+        var player = net.neoforged.neoforge.common.util.FakePlayerFactory.getMinecraft(level);
+        var event = new net.neoforged.neoforge.event.level.BlockEvent.BreakEvent(
+                level, pos, level.getBlockState(pos), player);
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(event);
+        helper.assertTrue(event.isCanceled(), assertion);
+        helper.assertTrue(level.getBlockEntity(pos) == controller,
+                "blocked breaking must retain the same Docking Controller block entity");
+        assertNoControllerDrops(helper);
+    }
+
+    private static void assertNoControllerDrops(GameTestHelper helper) {
+        var pos = helper.absolutePos(CONTROLLER_POS);
+        helper.assertTrue(
+                helper.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(pos).inflate(1.0)).isEmpty(),
+                "protected controller contents must not be materialized as item drops");
+    }
+
+    private static void installNormalControllerContents(
+            GameTestHelper helper,
+            DockingControllerBlockEntity controller
+    ) {
+        Fluid diesel = BuiltInRegistries.FLUID.get(DIESEL_ID);
+        Fluid lubricant = BuiltInRegistries.FLUID.get(LUBRICANT_ID);
+        helper.assertTrue(diesel != Fluids.EMPTY, "Immersive Petroleum diesel must be registered for this test");
+        helper.assertTrue(lubricant != Fluids.EMPTY, "Immersive Petroleum lubricant must be registered for this test");
+
+        controller.getGarageUpgradeInventory().setStackInSlot(
+                DockingControllerBlockEntity.BORE_HEAD_SLOT,
+                new ItemStack(IPMBlocks.BORE_HEAD_MK1.get()));
+        helper.assertValueEqual(500,
+                controller.getFuelPortHandler().fill(new FluidStack(diesel, 500), IFluidHandler.FluidAction.EXECUTE),
+                "normal fuel contents should be accepted");
+        helper.assertValueEqual(250,
+                controller.getLubricantPortHandler().fill(
+                        new FluidStack(lubricant, 250), IFluidHandler.FluidAction.EXECUTE),
+                "normal lubricant contents should be accepted");
+    }
+
+    private static void assertNormalControllerContents(
+            GameTestHelper helper,
+            DockingControllerBlockEntity controller,
+            String context
+    ) {
+        ItemStack boreHead = controller.getGarageUpgradeInventory()
+                .getStackInSlot(DockingControllerBlockEntity.BORE_HEAD_SLOT);
+        helper.assertTrue(boreHead.is(IPMBlocks.BORE_HEAD_MK1.get()),
+                context + ": bore-head upgrade identity must be preserved");
+        helper.assertValueEqual(1, boreHead.getCount(),
+                context + ": bore-head upgrade must remain a single item");
+        helper.assertValueEqual(500, controller.getFuelAmountForDiagnostics(),
+                context + ": fuel amount must remain exact");
+        helper.assertValueEqual("immersivepetroleum:diesel", controller.getFuelFluidId(),
+                context + ": fuel identity must remain exact");
+        helper.assertValueEqual(250, controller.getLubricantAmountForDiagnostics(),
+                context + ": lubricant amount must remain exact");
+        helper.assertValueEqual("immersivepetroleum:lubricant", controller.getLubricantFluidId(),
+                context + ": lubricant identity must remain exact");
+        helper.assertFalse(controller.hasRecoveryQuarantine(),
+                context + ": valid normal contents must not regress into quarantine");
+        helper.assertTrue(controller.hasProtectedStateForDestruction(),
+                context + ": valid normal contents must remain protected from destruction");
     }
 
     private static DockingControllerBlockEntity placeController(GameTestHelper helper) {
