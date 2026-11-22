@@ -173,6 +173,13 @@ public final class DockingControllerBlockEntity extends BlockEntity {
         return hasProtectedFormedState();
     }
 
+    /**
+     * Controller-owned state has no safe block-item drop path; refuse ordinary destruction instead of losing it.
+     */
+    public boolean hasProtectedStateForDestruction() {
+        return hasProtectedFormedState();
+    }
+
     public String protectedFormedStateSummary() {
         StringBuilder summary = new StringBuilder();
         appendProtectedState(summary, lockedTunnelDigger != null, "locked Tunnel Digger");
