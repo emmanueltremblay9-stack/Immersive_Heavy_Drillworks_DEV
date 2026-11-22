@@ -1,0 +1,46 @@
+name: IPM Docking Controller destruction safety
+
+on:
+  push:
+    branches:
+      - fix/docking-controller-protected-state-20261122
+    paths:
+      - ".github/workflows/ipm-controller-destruction.yml"
+      - "src/main/java/com/emman/immersivepetromachinery/block/entity/DockingControllerBlockEntity.java"
+      - "src/main/java/com/emman/immersivepetromachinery/recovery/RecoveryProtectionEvents.java"
+      - "src/main/java/com/emman/immersivepetromachinery/gametest/IPMGarageSafetyGameTests.java"
+      - "src/main/resources/assets/immersive_petro_machinery/lang/en_us.json"
+      - "build.gradle"
+      - "gradle.properties"
+      - "gradle/wrapper/**"
+      - "gradlew"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-gametest:
+    name: Java 21 build and NeoForge GameTests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Verify Java toolchain
+        run: java -version
+
+      - name: Build (includes compile, resources, and tests)
+        run: bash ./gradlew --no-daemon --stacktrace build
+
+      - name: Run NeoForge GameTests
+        run: bash ./gradlew --no-daemon --stacktrace runGameTestServer

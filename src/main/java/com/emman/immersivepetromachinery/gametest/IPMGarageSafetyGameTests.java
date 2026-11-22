@@ -992,6 +992,44 @@ public final class IPMGarageSafetyGameTests {
         helper.succeed();
     }
 
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void server_game_mode_destroy_block_refuses_loaded_controller_without_drops(GameTestHelper helper) {
+        DockingControllerBlockEntity controller = placeController(helper);
+        installNormalControllerContents(helper, controller);
+        var level = helper.getLevel();
+        var pos = helper.absolutePos(CONTROLLER_POS);
+        var player = createSurvivalFakePlayer(helper, pos);
+
+        boolean destroyed = player.gameMode.destroyBlock(pos);
+
+        helper.assertFalse(destroyed,
+                "ServerPlayerGameMode.destroyBlock must be refused for a controller with Garage contents");
+        assertControllerUnreplaced(helper);
+        assertNormalControllerContents(helper, controller, "after real server game-mode break attempt");
+        assertNoControllerDrops(helper);
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void server_game_mode_destroy_block_destroys_empty_controller_once(GameTestHelper helper) {
+        DockingControllerBlockEntity controller = placeController(helper);
+        var level = helper.getLevel();
+        var pos = helper.absolutePos(CONTROLLER_POS);
+        var player = createSurvivalFakePlayer(helper, pos);
+
+        helper.assertFalse(controller.hasProtectedStateForDestruction(),
+                "an empty, unlocked controller must not be protected");
+        boolean destroyed = player.gameMode.destroyBlock(pos);
+
+        helper.assertTrue(destroyed,
+                "ServerPlayerGameMode.destroyBlock must normally remove an empty controller");
+        helper.assertTrue(level.isEmptyBlock(pos), "empty controller block must be removed");
+        helper.assertTrue(level.getBlockEntity(pos) == null, "empty controller block entity must be removed");
+        assertSingleControllerDrop(helper);
+        helper.succeed();
+    }
+
     private static void assertQuarantinedRoundTrip(GameTestHelper helper, CompoundTag source, String key) {
         var registries = helper.getLevel().registryAccess();
         CompoundTag original = source.copy();
@@ -1014,6 +1052,33 @@ public final class IPMGarageSafetyGameTests {
         helper.assertTrue(archive.equals(secondSave.get("RecoveryQuarantine")), "repeated load/save must not replay or grow quarantine");
     }
 
+
+
+    private static net.minecraft.server.level.ServerPlayer createSurvivalFakePlayer(
+            GameTestHelper helper,
+            BlockPos target
+    ) {
+        var player = net.neoforged.neoforge.common.util.FakePlayerFactory.getMinecraft(helper.getLevel());
+        player.setPos(target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5);
+        player.getInventory().clearContent();
+        player.setItemInHand(
+                net.minecraft.world.InteractionHand.MAIN_HAND,
+                new ItemStack(net.minecraft.world.item.Items.DIAMOND_PICKAXE));
+        helper.assertTrue(player.gameMode.isSurvival(), "FakePlayer must use survival game mode");
+        helper.assertTrue(player.getAbilities().mayBuild, "FakePlayer must be allowed to build and break blocks");
+        return player;
+    }
+
+    private static void assertSingleControllerDrop(GameTestHelper helper) {
+        var pos = helper.absolutePos(CONTROLLER_POS);
+        List<ItemEntity> drops = helper.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(pos).inflate(1.0));
+        helper.assertValueEqual(1, drops.size(), "normal empty-controller break must create exactly one item entity");
+        helper.assertTrue(
+                drops.get(0).getItem().is(IPMBlocks.DOCKING_CONTROLLER.get().asItem()),
+                "the single drop must be the Docking Controller item");
+        helper.assertValueEqual(1, drops.get(0).getItem().getCount(),
+                "the Docking Controller must drop exactly once");
+    }
 
     private static void assertProtectedControllerBreakBlocked(
             GameTestHelper helper,
