@@ -1,0 +1,46 @@
+name: IPM Garage fluid-port capability diagnostic
+
+on:
+  push:
+    branches:
+      - diag/garage-fluid-capability-faces-20261122
+    paths:
+      - ".github/workflows/ipm-fluid-port-capability-diagnostic.yml"
+      - "src/main/java/com/emman/immersivepetromachinery/gametest/GarageFluidPortGameTests.java"
+      - "src/main/java/com/emman/immersivepetromachinery/fluid/**"
+      - "src/main/java/com/emman/immersivepetromachinery/block/entity/DockingControllerBlockEntity.java"
+      - "src/main/java/com/emman/immersivepetromachinery/registry/IPMCapabilities.java"
+      - "build.gradle"
+      - "gradle.properties"
+      - "gradle/wrapper/**"
+      - "gradlew"
+
+permissions:
+  contents: read
+
+jobs:
+  fluid-port-diagnostic:
+    name: Java 21 build and Garage fluid-port GameTests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out diagnostic branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Verify Java toolchain
+        run: java -version
+
+      - name: Build
+        run: bash ./gradlew --no-daemon --stacktrace build
+
+      - name: Run NeoForge GameTests
+        run: bash ./gradlew --no-daemon --stacktrace runGameTestServer
