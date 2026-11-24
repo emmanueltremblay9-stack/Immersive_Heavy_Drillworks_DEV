@@ -2,6 +2,7 @@ package com.emman.immersivepetromachinery.cargo;
 
 import blusunrize.immersiveengineering.api.tool.conveyor.ConveyorHandler;
 import blusunrize.immersiveengineering.common.blocks.metal.ConveyorBlock;
+import blusunrize.immersiveengineering.common.blocks.metal.ConveyorBeltBlockEntity;
 import blusunrize.immersiveengineering.common.blocks.metal.conveyors.BasicConveyor;
 import com.emman.immersivepetromachinery.ImmersivePetroMachinery;
 import com.emman.immersivepetromachinery.registry.IPMBlocks;
@@ -16,6 +17,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -95,6 +97,69 @@ public final class CargoHopperGameTests {
         helper.assertTrue(handler.extractItem(0, 2, false).isEmpty(), "Extraction denied");
         helper.assertValueEqual(2, hopper.getBufferForDiagnostics().getStackInSlot(0).getCount(), "Buffer unchanged");
         helper.succeed();
+    }
+
+    /**
+     * End-to-end runtime witness: insert through the registered NeoForge
+     * capability, leave the output disconnected for several real ticker
+     * intervals, then align two actual adjacent IE BasicConveyors.
+     *
+     * The transfer method is deliberately NEVER called from this test:
+     * the block entity ticker must move the item into the first IE belt,
+     * and the IE collision transport must carry it onto the second belt.
+     */
+    @GameTest(template = "empty", timeoutTicks = 180)
+    public static void registered_input_and_real_ticker_hold_then_deliver_to_downstream_ie_belt(GameTestHelper helper) {
+        BlockPos machinePos = helper.absolutePos(MACHINE);
+        BlockPos firstBeltPos = machinePos.relative(Direction.EAST);
+        BlockPos downstreamBeltPos = firstBeltPos.relative(Direction.EAST);
+        CargoHopperBlockEntity hopper = placeHopper(helper, Direction.EAST, 0);
+
+        var input = helper.getLevel().getCapability(
+                Capabilities.ItemHandler.BLOCK, machinePos, Direction.UP);
+        helper.assertTrue(input != null, "Cargo Hopper top input capability must be registered");
+        helper.assertTrue(helper.getLevel().getCapability(
+                        Capabilities.ItemHandler.BLOCK, machinePos, Direction.EAST) == null,
+                "Output face must not expose a bypass inventory");
+        ItemStack remainder = input.insertItem(0, new ItemStack(Items.IRON_INGOT), false);
+        helper.assertTrue(remainder.isEmpty(), "Registered input should accept the item");
+        helper.assertValueEqual(1, hopper.getBufferForDiagnostics().getStackInSlot(0).getCount(),
+                "Inserted cargo must reside in the hopper");
+
+        helper.startSequence()
+                .thenExecuteAfter(25, () -> {
+                    helper.assertValueEqual(1, hopper.getBufferForDiagnostics().getStackInSlot(0).getCount(),
+                            "Disconnected output must conserve cargo across at least three transfer ticks");
+                    helper.assertValueEqual(0, nearbyIron(helper),
+                            "Disconnected output must not release cargo as an item entity");
+
+                    placeStandardConveyor(helper, Direction.EAST, Direction.EAST);
+                    helper.getLevel().setBlockAndUpdate(
+                            downstreamBeltPos,
+                            ConveyorHandler.getBlock(BasicConveyor.TYPE).defaultBlockState()
+                                    .setValue(ConveyorBlock.FACING, Direction.EAST));
+                    helper.assertTrue(helper.getLevel().getBlockEntity(firstBeltPos)
+                                    instanceof ConveyorBeltBlockEntity<?>,
+                            "The adjacent receiver must be a real IE conveyor block entity");
+                    helper.assertTrue(helper.getLevel().getBlockEntity(downstreamBeltPos)
+                                    instanceof ConveyorBeltBlockEntity<?>,
+                            "The downstream block must be a second real IE conveyor");
+                })
+                .thenWaitUntil(() -> {
+                    helper.assertTrue(hopper.getBufferForDiagnostics().getStackInSlot(0).isEmpty(),
+                            "Automatic server ticker did not discharge the buffered cargo");
+                    helper.assertTrue(helper.getLevel().getEntitiesOfClass(
+                                    ItemEntity.class, new AABB(downstreamBeltPos))
+                                    .stream().anyMatch(item -> item.getItem().is(Items.IRON_INGOT)),
+                            "The real IE belts have not transported the item onto the downstream belt");
+                })
+                .thenExecute(() -> {
+                    helper.assertValueEqual(0, hopper.getBufferForDiagnostics().getStackInSlot(0).getCount(),
+                            "Buffer must be empty following ticker-driven transfer");
+                    helper.assertValueEqual(1, nearbyIron(helper),
+                            "Exactly one item must exist downstream: no loss or duplication");
+                })
+                .thenSucceed();
     }
 
     private static CargoHopperBlockEntity placeHopper(GameTestHelper helper, Direction output, int iron) {
