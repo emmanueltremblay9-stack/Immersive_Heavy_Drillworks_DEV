@@ -2,6 +2,7 @@ package com.emman.immersivepetromachinery.registry;
 
 import com.emman.immersivepetromachinery.ImmersivePetroMachinery;
 import com.emman.immersivepetromachinery.block.DockingControllerBlock;
+import com.emman.immersivepetromachinery.cargo.CargoHopperBlock;
 import com.emman.immersivepetromachinery.block.SurveyConsoleBlock;
 import java.util.List;
 import net.minecraft.world.item.BlockItem;
@@ -21,6 +22,11 @@ public final class IPMBlocks {
 
     public static final DeferredBlock<DockingControllerBlock> DOCKING_CONTROLLER =
             BLOCKS.registerBlock("docking_controller", DockingControllerBlock::new, platformBlockProperties());
+    public static final DeferredBlock<CargoHopperBlock> CARGO_HOPPER =
+            BLOCKS.registerBlock("cargo_hopper", CargoHopperBlock::new,
+                    BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                            .requiresCorrectToolForDrops().strength(4.0F, 6.0F).sound(SoundType.METAL));
+    public static final DeferredItem<BlockItem> CARGO_HOPPER_ITEM = ITEMS.registerSimpleBlockItem(CARGO_HOPPER);
     public static final DeferredBlock<Block> DOCKING_FRAME = registerPlatformBlock("docking_frame");
     public static final DeferredBlock<Block> LOCKING_RAIL = registerPlatformBlock("locking_rail");
     public static final DeferredBlock<Block> FUEL_PORT = registerPlatformBlock("fuel_port");

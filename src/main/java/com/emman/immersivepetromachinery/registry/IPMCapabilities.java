@@ -9,6 +9,11 @@ public final class IPMCapabilities {
     }
 
     public static void register(RegisterCapabilitiesEvent event) {
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                IPMBlockEntities.CARGO_HOPPER.get(),
+                (hopper, side) -> hopper.inputCapability(side)
+        );
         event.registerBlock(
                 Capabilities.FluidHandler.BLOCK,
                 (level, pos, state, blockEntity, side) -> DockFluidPortAccess.getFuelHandler(level, pos),
